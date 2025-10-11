@@ -1,101 +1,163 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import random
+import copy
 
-def create_complex_network(nodes=20, edge_prob=0.2):
-    """ایجاد یک گراف پیچیده با استفاده از مدل Erdős-Rényi"""
-    G = nx.erdos_renyi_graph(nodes, edge_prob, seed=42, directed=False)
-    while not nx.is_connected(G):
-        G = nx.erdos_renyi_graph(nodes, edge_prob, seed=random.randint(0, 1000), directed=False)
+# --- بخش 1: توابع اصلی و کمکی ---
+
+def create_complex_network(num_nodes=50, num_edges_to_add=3):
+    """ایجاد یک شبکه پیچیده از نوع Barabási-Albert برای شبیه‌سازی دنیای واقعی."""
+    G = nx.barabasi_albert_graph(num_nodes, num_edges_to_add, seed=42)
+    print(f"شبکه اولیه با {G.number_of_nodes()} گره و {G.number_of_edges()} یال ساخته شد.")
     return G
 
-def find_critical_nodes(G, top_n=3):
-    """پیدا کردن مهم‌ترین گره‌ها بر اساس معیار مرکزیت بینابینی (Betweenness Centrality)"""
+def calculate_resilience_metrics(G):
+    """محاسبه معیارهای کلیدی تاب‌آوری شبکه."""
+    if not nx.is_connected(G):
+        # اگر شبکه چند تکه شده باشد، بزرگترین قطعه را تحلیل می‌کنیم
+        largest_cc_nodes = max(nx.connected_components(G), key=len)
+        largest_cc = G.subgraph(largest_cc_nodes)
+        connectivity = 0  # شبکه متصل نیست
+        avg_shortest_path = nx.average_shortest_path_length(largest_cc)
+        num_components = nx.number_connected_components(G)
+    else:
+        largest_cc = G
+        connectivity = 1  # شبکه متصل است
+        avg_shortest_path = nx.average_shortest_path_length(G)
+        num_components = 1
+        
+    return {
+        "is_connected": connectivity,
+        "number_of_components": num_components,
+        "largest_component_size": largest_cc.number_of_nodes(),
+        "average_shortest_path": avg_shortest_path
+    }
+
+def visualize_network(G, title, pos=None, ax=None):
+    """بصری‌سازی گراف شبکه."""
+    if pos is None:
+        pos = nx.spring_layout(G, seed=42)
+    if ax is None:
+        plt.figure(figsize=(10, 8))
+        ax = plt.gca()
+    
+    nx.draw(G, pos, with_labels=True, node_color='skyblue', node_size=500, edge_color='gray', ax=ax)
+    ax.set_title(title, fontsize=16)
+    return pos
+
+# --- بخش 2: پیاده‌سازی سه استراتژی مختلف ---
+
+# استراتژی 1: روش پیشنهادی شما (خرابی هدفمند + ترمیم هوشمند)
+def simulate_proposed_method(G_original):
+    """شبیه‌سازی خرابی گره بحرانی و ترمیم هوشمند."""
+    G = G_original.copy()
+    
+    # پیدا کردن گره بحرانی
     centrality = nx.betweenness_centrality(G)
-    # مرتب‌سازی گره‌ها بر اساس مقدار مرکزیت به صورت نزولی
-    sorted_nodes = sorted(centrality.items(), key=lambda item: item[1], reverse=True)
-    # برگرداندن N گره برتر
-    critical_nodes = [node for node, score in sorted_nodes[:top_n]]
-    return critical_nodes
-
-def simulate_failure_and_reroute(G, failed_node):
-    """
-    شبیه‌سازی خرابی یک گره و تلاش برای یافتن مسیر جایگزین
-    بین همسایگان گره خراب شده.
-    """
-    if failed_node not in G:
-        print(f"گره {failed_node} در شبکه وجود ندارد.")
-        return G, False, []
-
-    neighbors = list(G.neighbors(failed_node))
-    print(f"گره {failed_node} خراب شد. همسایگان آن عبارتند از: {neighbors}")
-
-    G_resilient = G.copy()
-    G_resilient.remove_node(failed_node)
-    print(f"گره {failed_node} و تمام یال‌های متصل به آن حذف شدند.")
-
-    rerouted_paths = []
-    # تلاش برای ایجاد مسیر جایگزین بین هر جفت از همسایگان گره خراب
+    critical_node = max(centrality, key=centrality.get)
+    print(f"\n--- شروع روش پیشنهادی: گره بحرانی {critical_node} حذف می‌شود ---")
+    
+    neighbors = list(G.neighbors(critical_node))
+    G.remove_node(critical_node)
+    
+    # استراتژی ترمیم: اتصال مجدد همسایگان گره حذف شده
+    print("اجرای استراتژی ترمیم هوشمند...")
     for i in range(len(neighbors)):
         for j in range(i + 1, len(neighbors)):
             u, v = neighbors[i], neighbors[j]
-            # اگر مسیری بین دو همسایه وجود نداشته باشد، یک یال مستقیم اضافه می‌کنیم
-            if not nx.has_path(G_resilient, u, v):
-                print(f"هیچ مسیری بین {u} و {v} وجود ندارد. ایجاد یال مستقیم برای بازیابی اتصال.")
-                G_resilient.add_edge(u, v)
-                rerouted_paths.append((u, v))
+            if not G.has_edge(u, v):
+                # اگر مسیری بین دو همسایه وجود نداشته باشد، یک یال مستقیم اضافه کن
+                if not nx.has_path(G, u, v):
+                    print(f"ایجاد یال ترمیمی بین {u} و {v}")
+                    G.add_edge(u, v)
+    return G
 
-    is_connected_after = nx.is_connected(G_resilient)
-    return G_resilient, is_connected_after, rerouted_paths
-
-def visualize_network(G, title, critical_nodes=None, failed_node=None, rerouted_edges=None):
-    """نمایش گرافیکی شبکه"""
-    pos = nx.spring_layout(G, seed=42)
-    plt.figure(figsize=(12, 12))
+# استراتژی 2: حمله به سبک مقاله Nature 2000 (حذف مهم‌ترین گره‌ها بدون ترمیم)
+def simulate_nature_attack(G_original, num_nodes_to_remove=1):
+    """شبیه‌سازی حمله هدفمند به گره‌های با بالاترین درجه (بدون ترمیم)."""
+    G = G_original.copy()
+    print(f"\n--- شروع حمله Nature: حذف {num_nodes_to_remove} گره با بالاترین درجه ---")
     
-    node_colors = []
-    for node in G.nodes():
-        if node == failed_node:
-            node_colors.append('red')
-        elif critical_nodes and node in critical_nodes:
-            node_colors.append('orange')
-        else:
-            node_colors.append('skyblue')
+    # پیدا کردن گره‌ها با بالاترین درجه
+    node_degrees = sorted(G.degree, key=lambda x: x[1], reverse=True)
+    nodes_to_remove = [node for node, degree in node_degrees[:num_nodes_to_remove]]
     
-    nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=700, font_size=10, font_color='black')
+    print(f"گره‌های هدف برای حذف: {nodes_to_remove}")
+    G.remove_nodes_from(nodes_to_remove)
+    return G
 
-    if rerouted_edges:
-        nx.draw_networkx_edges(G, pos, edgelist=rerouted_edges, edge_color='green', width=2.5, style='dashed')
-
-    plt.title(title, size=15)
-    plt.show()
-
-if __name__ == '__main__':
-    # 1. ایجاد و نمایش شبکه اولیه
-    original_network = create_complex_network(nodes=15, edge_prob=0.3)
-    print("شبکه اولیه ایجاد شد.")
-    visualize_network(original_network, "شبکه اصلی و پیچیده")
-
-    # 2. پیدا کردن و نمایش گره‌های حیاتی
-    critical_nodes = find_critical_nodes(original_network, top_n=3)
-    print(f"گره‌های حیاتی شناسایی شدند: {critical_nodes}")
-    visualize_network(original_network, "شناسایی گره‌های حیاتی (نارنجی)", critical_nodes=critical_nodes)
-
-    # 3. شبیه‌سازی خرابی یکی از گره‌های حیاتی
-    node_to_fail = critical_nodes[0]
-    print(f"\n--- شبیه‌سازی خرابی گره حیاتی: {node_to_fail} ---")
+# استراتژی 3: خرابی تصادفی (حذف 20% یال‌ها)
+def simulate_random_failure(G_original, failure_percentage=0.20):
+    """شبیه‌سازی خرابی تصادفی یال‌ها (بدون ترمیم)."""
+    G = G_original.copy()
+    num_edges_to_remove = int(G.number_of_edges() * failure_percentage)
+    print(f"\n--- شروع خرابی تصادفی: حذف {num_edges_to_remove} یال ({failure_percentage*100}%) ---")
     
-    resilient_network, is_connected, rerouted = simulate_failure_and_reroute(original_network, node_to_fail)
+    edges_to_remove = random.sample(list(G.edges()), num_edges_to_remove)
+    G.remove_edges_from(edges_to_remove)
+    return G
 
-    # 4. نمایش شبکه پس از خرابی و بازیابی
-    status = "متصل" if is_connected else "غیرمتصل (Partitioned)"
-    visualize_network(resilient_network, 
-                      f"شبکه پس از خرابی گره {node_to_fail} و بازیابی (وضعیت: {status})",
-                      failed_node=node_to_fail, 
-                      critical_nodes=critical_nodes,
-                      rerouted_edges=rerouted)
+# --- بخش 3: اجرای شبیه‌سازی و مقایسه نتایج ---
+
+if __name__ == "__main__":
+    # 1. ایجاد شبکه پایه
+    original_network = create_complex_network()
+    initial_pos = nx.spring_layout(original_network, seed=42) # موقعیت اولیه برای هماهنگی نمودارها
     
-    if is_connected:
-        print(f"موفقیت: شبکه پس از خرابی گره {node_to_fail} و اعمال مسیرهای جایگزین، همچنان متصل باقی ماند.")
+    # 2. کپی کردن شبکه برای هر سناریو
+    network_proposed = original_network.copy()
+    network_nature = original_network.copy()
+    network_random = original_network.copy()
+
+    # 3. اجرای هر سه شبیه‌سازی
+    final_proposed = simulate_proposed_method(network_proposed)
+    final_nature = simulate_nature_attack(network_nature, num_nodes_to_remove=1) # مقایسه حذف 1 گره
+    final_random = simulate_random_failure(network_random, failure_percentage=0.20)
+    
+    # 4. ارزیابی نتایج
+    print("\n\n" + "="*30)
+    print(" نتایج ارزیابی تاب‌آوری ".center(30, "="))
+    print("="*30)
+    
+    metrics_initial = calculate_resilience_metrics(original_network)
+    metrics_proposed = calculate_resilience_metrics(final_proposed)
+    metrics_nature = calculate_resilience_metrics(final_nature)
+    metrics_random = calculate_resilience_metrics(final_random)
+
+    print("\nوضعیت شبکه اولیه:")
+    print(metrics_initial)
+    
+    print("\n۱. نتیجه روش پیشنهادی (ترمیم هوشمند):")
+    print(metrics_proposed)
+
+    print("\n۲. نتیجه حمله Nature (حذف گره مهم):")
+    print(metrics_nature)
+    
+    print("\n۳. نتیجه خرابی تصادفی (حذف ۲۰٪ یال‌ها):")
+    print(metrics_random)
+    
+    print("\n" + "="*30)
+    print(" تحلیل مقایسه‌ای ".center(30, "="))
+    print("="*30)
+    if metrics_proposed["is_connected"]:
+        print(">> موفقیت: روش پیشنهادی شما توانست اتصال شبکه را حفظ کند.")
     else:
-        print(f"هشدار: با وجود تلاش برای بازیابی، شبکه به چند بخش تقسیم شده است.")
+        print(">> هشدار: حتی با روش پیشنهادی، شبکه چند تکه شد.")
+        
+    if not metrics_nature["is_connected"]:
+        print(">> تحلیل: حمله Nature با حذف فقط یک گره، شبکه را از هم پاشید.")
+        
+    if not metrics_random["is_connected"]:
+        print(">> تحلیل: حذف تصادفی ۲۰٪ یال‌ها نیز باعث از هم پاشیدگی شبکه شد.")
+
+    # 5. بصری‌سازی نتایج
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16))
+    fig.suptitle("مقایسه استراتژی‌های تاب‌آوری شبکه", fontsize=20)
+    
+    visualize_network(original_network, "شبکه اولیه", pos=initial_pos, ax=axes[0, 0])
+    visualize_network(final_proposed, "1. پس از روش پیشنهادی (ترمیم هوشمند)", pos=initial_pos, ax=axes[0, 1])
+    visualize_network(final_nature, "2. پس از حمله Nature (حذف گره مهم)", pos=initial_pos, ax=axes[1, 0])
+    visualize_network(final_random, "3. پس از خرابی تصادفی (حذف 20% یال)", pos=initial_pos, ax=axes[1, 1])
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.show()
