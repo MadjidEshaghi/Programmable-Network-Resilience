@@ -1,10 +1,12 @@
-A Calculus for Programmable Network Resilience
+A Unifying Framework for Network Resilience based on Information Flow
 
-This repository contains the official Python implementation and data for the paper: **"A Calculus for Programmable Network Resilience"**, submitted to *Nature*.
+This repository contains the official Python implementation and data for the paper: **"
+A Unifying Framework for Network Resilience based on Information Flow
+"**, submitted to *Nature*.
 
 **Authors:** Madjid Eshaghi Gordji,
 **Affiliation:** Department of Mathematics, Semnan University
-**Preprint:** [Gordji & Shahini, 
+**Preprint:** [Gordji
 ## 📝 Overview
 
 This research introduces a novel mathematical framework for designing and analyzing programmable network resilience. We propose a calculus based on targeted edge rewiring that optimizes a network's structure against cascading failures while preserving its core functionalities. Our method allows for a precise trade-off between resilience enhancement and the economic cost of modifications.
